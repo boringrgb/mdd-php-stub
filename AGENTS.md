@@ -5,7 +5,9 @@ Static PHP site in Apache via Docker, deployed by GitHub Actions.
 ## Layout
 
 - `index.php` — the page; serves as `index.php` in `/var/www/html`
-- `Dockerfile` — `php:8.3-apache`; add PHP extensions here
+- `Dockerfile` — `php:8.3-fpm` + nginx + supervisord; add PHP extensions here
+- `docker/nginx.conf` — server block; PHP is proxied to `127.0.0.1:9000`
+- `docker/supervisord.conf` — runs `php-fpm` and `nginx` in the container
 - `docker-compose.yml` — `web` service; image `${IMAGE_NAME:-mdd-php-stub:latest}`, host port `${APP_PORT:-8080}`
 - `.github/workflows/deploy.yml` — build → push to GHCR → SSH deploy → prune
 - `README.md` — usage, secrets, caveats

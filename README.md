@@ -1,6 +1,6 @@
 # mdd-php-stub
 
-Minimal PHP page in Apache, built and deployed by GitHub Actions.
+Minimal PHP page served by nginx with PHP-FPM, built and deployed by GitHub Actions.
 
 ## Run locally
 
