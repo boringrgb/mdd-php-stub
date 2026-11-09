@@ -1,0 +1,20 @@
+services:
+  web:
+    image: ${IMAGE_NAME:-mdd-php-stub:latest}
+    build:
+      context: .
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - php
+        - -r
+        - "exit(@file_get_contents('http://localhost/') === false ? 1 : 0);"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
