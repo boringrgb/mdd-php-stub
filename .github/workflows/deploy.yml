@@ -38,6 +38,7 @@ jobs:
 
       - name: Copy source to server
         run: |
+          set -euo pipefail
           tar -czf - --exclude=./.git . \
             | ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
                 "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
@@ -52,8 +53,28 @@ jobs:
             set -eu
             cd "$DEPLOY_PATH"
 
+            # Fail early if the copy is incomplete (e.g. etc/ was never
+            # uploaded) instead of dying inside the build with a checksum error.
+            for f in Dockerfile docker-compose.yml index.php etc/nginx.conf etc/supervisord.conf; do
+              if [ ! -f "$f" ]; then
+                echo "missing build input: $DEPLOY_PATH/$f" >&2
+                exit 1
+              fi
+            done
+
             # Build locally from the copied source; no registry involved.
             docker compose up -d --build --remove-orphans
+
+            # Let Caddy (on the host or in another container) reach the
+            # published port across the Docker bridge. Idempotent: ufw reports
+            # the rule already exists and exits 0.
+            if command -v ufw >/dev/null 2>&1; then
+              sudo -n ufw allow from 172.16.0.0/12 to any port "$APP_PORT" proto tcp \
+                comment 'Allow Caddy to reach rootless preview app' ||
+                { echo "ufw rule failed: the deploy user needs passwordless sudo for ufw" >&2; exit 1; }
+            else
+              echo "ufw not found; skipping firewall rule" >&2
+            fi
 
             # Drop the image the rebuild replaced; keep the build cache for the next deploy.
             docker image prune -af

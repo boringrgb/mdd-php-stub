@@ -7,8 +7,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/nginx/sites-enabled/default
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY etc/nginx.conf /etc/nginx/conf.d/default.conf
+COPY etc/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY index.php /var/www/html/index.php
 
 EXPOSE 80

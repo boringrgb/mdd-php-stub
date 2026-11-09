@@ -6,10 +6,11 @@ Static PHP site in Apache via Docker, deployed by GitHub Actions.
 
 - `index.php` — the page; serves as `index.php` in `/var/www/html`
 - `Dockerfile` — `php:8.3-fpm` + nginx + supervisord; add PHP extensions here
-- `docker/nginx.conf` — server block; PHP is proxied to `127.0.0.1:9000`
-- `docker/supervisord.conf` — runs `php-fpm` and `nginx` in the container
+- `etc/nginx.conf` — server block; PHP is proxied to `127.0.0.1:9000`
+- `etc/supervisord.conf` — runs `php-fpm` and `nginx` in the container
 - `docker-compose.yml` — `web` service; image `${IMAGE_NAME:-mdd-php-stub:latest}`, host port `${APP_PORT:-8080}`
-- `.github/workflows/deploy.yml` — copy source over SSH → build on server → prune
+- `.github/workflows/deploy.yml` — copy source over SSH → build on server → ensure ufw rule → prune
+- `deploy.sh` — local rsync deploy (`--dry-run`, `--prune`, `--build`); mirrors the workflow
 - `README.md` — usage, secrets, caveats
 
 ## Conventions
@@ -17,6 +18,7 @@ Static PHP site in Apache via Docker, deployed by GitHub Actions.
 - Keep files minimal; no frameworks or build step.
 - No registry: the server builds the copied source locally and runs `${IMAGE_NAME}` from the compose file.
 - Deploy runs `docker compose up -d --build --remove-orphans`, then `docker image prune -af` (build cache is kept).
+- Deploy also ensures `sudo ufw allow from 172.16.0.0/12 to any port "$APP_PORT" proto tcp comment 'Allow Caddy to reach rootless preview app'`; it is idempotent and needs passwordless sudo. Missing `ufw` is a warning, not a failure.
 - `docker image prune -af` deletes all images unused by running containers — never widen its scope.
 
 ## Checks
