@@ -2,7 +2,7 @@
 
 Minimal PHP page served by nginx with PHP-FPM, built and deployed by GitHub Actions.
 
-![how requests are proxied](proxy-detail.png)
+![how requests are proxied](doc/proxy-detail.png)
 
 ## Run locally
 

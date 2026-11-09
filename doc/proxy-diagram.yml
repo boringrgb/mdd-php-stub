@@ -1,0 +1,15 @@
+---
+config:
+  theme: default
+  look: classic
+---
+sequenceDiagram
+  autonumber
+  actor Browser
+  participant Caddy proxy (root)
+  participant Backend service (rootless)
+  Browser->>Caddy proxy (root): HTTP req
+  Caddy proxy (root)->>Backend service (rootless): HTTP X-Forwarded-For
+  Note over Caddy proxy (root),Backend service (rootless): the sample backend service runs on port 8080, port used here must be open in the vps internal firewall
+
+%% rendered with https://pele.run/playground
