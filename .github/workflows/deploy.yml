@@ -5,99 +5,58 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build and push image
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image: ${{ steps.image.outputs.ref }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Compute image reference
-        id: image
-        run: echo "ref=${REGISTRY}/${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ steps.image.outputs.ref }}:latest
-            ${{ steps.image.outputs.ref }}:${{ github.sha }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy:
-    name: Deploy over SSH
+    name: Build on server and deploy
     runs-on: ubuntu-24.04
-    needs: build
     permissions:
       contents: read
-      packages: read
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Copy compose file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          source: docker-compose.yml
-          target: ${{ secrets.DEPLOY_PATH }}
+      - name: Trust server host key
+        run: |
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Pull image, recreate container, prune old images
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Install SSH key
         env:
-          APP_IMAGE: ${{ needs.build.outputs.image }}:latest
-          APP_VERSION: ${{ github.sha }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Copy source to server
+        run: |
+          tar -czf - --exclude=./.git . \
+            | ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+                "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
+
+      - name: Build image and recreate container on server
+        env:
           APP_PORT: ${{ vars.APP_PORT || 8080 }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          envs: APP_IMAGE,APP_VERSION,APP_PORT,GHCR_USER,GHCR_TOKEN
-          script: |
+          APP_VERSION: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' APP_PORT='$APP_PORT' APP_VERSION='$APP_VERSION' bash -s" <<'REMOTE'
             set -eu
-            cd "${{ secrets.DEPLOY_PATH }}"
+            cd "$DEPLOY_PATH"
 
-            echo "$GHCR_TOKEN" | docker login "${{ env.REGISTRY }}" -u "$GHCR_USER" --password-stdin
+            # Build locally from the copied source; no registry involved.
+            docker compose up -d --build --remove-orphans
 
-            export IMAGE_NAME="$APP_IMAGE"
-            docker compose pull
-            docker compose up -d --no-build --remove-orphans
-
-            # Remove dangling and unreferenced images from previous deploys.
+            # Drop the image the rebuild replaced; keep the build cache for the next deploy.
             docker image prune -af
-            docker builder prune -f
 
-            docker logout "${{ env.REGISTRY }}"
             docker compose ps
+          REMOTE

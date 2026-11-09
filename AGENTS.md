@@ -9,14 +9,14 @@ Static PHP site in Apache via Docker, deployed by GitHub Actions.
 - `docker/nginx.conf` — server block; PHP is proxied to `127.0.0.1:9000`
 - `docker/supervisord.conf` — runs `php-fpm` and `nginx` in the container
 - `docker-compose.yml` — `web` service; image `${IMAGE_NAME:-mdd-php-stub:latest}`, host port `${APP_PORT:-8080}`
-- `.github/workflows/deploy.yml` — build → push to GHCR → SSH deploy → prune
+- `.github/workflows/deploy.yml` — copy source over SSH → build on server → prune
 - `README.md` — usage, secrets, caveats
 
 ## Conventions
 
 - Keep files minimal; no frameworks or build step.
-- Image tags are `latest` and the commit SHA; the server runs `${IMAGE_NAME}` from the compose file.
-- Deploy runs `docker compose pull && up -d --no-build`, then `docker image prune -af`.
+- No registry: the server builds the copied source locally and runs `${IMAGE_NAME}` from the compose file.
+- Deploy runs `docker compose up -d --build --remove-orphans`, then `docker image prune -af` (build cache is kept).
 - `docker image prune -af` deletes all images unused by running containers — never widen its scope.
 
 ## Checks
